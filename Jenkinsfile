@@ -4,9 +4,6 @@ pipeline {
     stages {
         stage('Clone Repository') {
             steps {
-                // Explicitly specify the 'main' branch for the git clone operation.
-                // Without this, Jenkins's 'git' step often defaults to 'master',
-                // which was causing the "Couldn't find any revision to build" error.
                 git url: 'https://github.com/gkxol/html-portfolio.git', branch: 'main'
             }
         }
@@ -19,11 +16,37 @@ pipeline {
             }
         }
 
+        // New Stage: Security Scan using OWASP Dependency-Check
+        stage('Security Scan (Dependency Check)') {
+            steps {
+                echo "Running OWASP Dependency-Check..."
+                // The 'dependencyCheck' step is provided by the plugin.
+                // tool: 'Default' refers to the name you gave in Global Tool Configuration.
+                // scanPath: '.' tells it to scan the entire current workspace.
+                // format: 'HTML' generates a readable HTML report.
+                // autoUpdate: true ensures vulnerability definitions are updated (requires internet access).
+                // failBuildOnCVSS: 7.0 (Optional) - Fails the build if a vulnerability with CVSS score 7.0 or higher is found. Adjust as needed.
+                // outputDirectory: 'dependency-check-report' (Optional) - Specifies a directory for reports.
+                dependencyCheck tool: 'Default',
+                                scanPath: '.',
+                                format: 'HTML',
+                                autoUpdate: true,
+                                failBuildOnCVSS: 7.0 // Example: Fail if high severity vulnerability found
+            }
+            post {
+                always {
+                    // This step publishes the Dependency-Check results to the Jenkins build page.
+                    // It creates a "Dependency-Check Report" link in the build summary.
+                    dependencyCheckPublisher()
+                }
+            }
+        }
+
         stage('Archive Artifacts') {
             steps {
                 // Archives HTML, PNG, and Markdown files as build artifacts.
-                // allowEmptyArchive: true ensures the step doesn't fail if no matching files are found.
-                archiveArtifacts artifacts: '**/*.html, **/*.png, **/*.md', allowEmptyArchive: true
+                // You might also want to archive the Dependency-Check reports here.
+                archiveArtifacts artifacts: '**/*.html, **/*.png, **/*.md, dependency-check-report/*', allowEmptyArchive: true
             }
         }
 
