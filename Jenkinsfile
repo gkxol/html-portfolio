@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+    tools {
+        // Declare the Dependency-Check tool to be used in this pipeline.
+        // The name 'Default' must match the name configured in Manage Jenkins -> Global Tool Configuration.
+        dependencyCheck 'Default'
+    }
+
     stages {
         stage('Clone Repository') {
             steps {
@@ -11,59 +17,67 @@ pipeline {
         stage('Build (Validate HTML)') {
             steps {
                 echo "No build step required for static HTML."
-                // Optional: run a validator if needed
-                // sh 'htmlhint index.html'
             }
         }
 
-        // New Stage: Security Scan using OWASP Dependency-Check
         stage('Security Scan (Dependency Check)') {
             steps {
                 echo "Running OWASP Dependency-Check..."
-                // The 'dependencyCheck' step is provided by the plugin.
-                // tool: 'Default' refers to the name you gave in Global Tool Configuration.
-                // scanPath: '.' tells it to scan the entire current workspace.
-                // format: 'HTML' generates a readable HTML report.
-                // autoUpdate: true ensures vulnerability definitions are updated (requires internet access).
-                // failBuildOnCVSS: 7.0 (Optional) - Fails the build if a vulnerability with CVSS score 7.0 or higher is found. Adjust as needed.
-                // outputDirectory: 'dependency-check-report' (Optional) - Specifies a directory for reports.
-                dependencyCheck tool: 'Default',
-                                scanPath: '.',
+                // Removed 'tool: 'Default'' here because it's declared in the 'tools' block above.
+                // The parameters 'scanPath', 'format', 'autoUpdate', 'failBuildOnCVSS'
+                // are standard and should be recognized by the 'dependencyCheck' step.
+                dependencyCheck scanPath: '.',
                                 format: 'HTML',
                                 autoUpdate: true,
                                 failBuildOnCVSS: 7.0 // Example: Fail if high severity vulnerability found
             }
             post {
                 always {
-                    // This step publishes the Dependency-Check results to the Jenkins build page.
-                    // It creates a "Dependency-Check Report" link in the build summary.
                     dependencyCheckPublisher()
+                }
+            }
+        }
+
+        stage('Code Quality Scan (SonarQube)') {
+            steps {
+                echo "Running SonarQube analysis..."
+                withSonarQubeEnv(credentialsId: 'sonarqube-token', installationName: 'Default SonarQube Scanner') {
+                    sh "sonar-scanner \
+                       -Dsonar.projectKey=html-portfolio-project \
+                       -Dsonar.sources=. \
+                       -Dsonar.projectName='HTML Portfolio' \
+                       -Dsonar.projectVersion=1.0"
+                }
+            }
+            post {
+                success {
+                    echo 'SonarQube analysis successful.'
+                    // timeout(time: 5, unit: 'MINUTES') {
+                    //     waitForQualityGate abortPipeline: true
+                    // }
+                }
+                failure {
+                    echo 'SonarQube analysis failed or Quality Gate failed.'
                 }
             }
         }
 
         stage('Archive Artifacts') {
             steps {
-                // Archives HTML, PNG, and Markdown files as build artifacts.
-                // You might also want to archive the Dependency-Check reports here.
                 archiveArtifacts artifacts: '**/*.html, **/*.png, **/*.md, dependency-check-report/*', allowEmptyArchive: true
             }
         }
 
         stage('Deploy (optional)') {
-            // This stage only runs if the current branch is 'main'.
             when {
                 branch 'main'
             }
             steps {
                 echo 'Deploy step placeholder. Example: rsync or GitHub Pages deploy here.'
-                // Example for AWS S3 deployment (uncomment and configure if needed):
-                // sh 'aws s3 sync . s3://your-bucket-name --delete'
             }
         }
     }
 
-    // Post-build actions based on the build result.
     post {
         success {
             echo 'Site build successful!'
